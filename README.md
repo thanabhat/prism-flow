@@ -16,7 +16,7 @@ Built-in demo accounts (when `EXTERNAL_AUTH_URL` is not set):
 ## Project Structure
 
 ```text
-prismflow/
+prism-flow/
 ├── backend/
 │   ├── Dockerfile
 │   ├── main.py
