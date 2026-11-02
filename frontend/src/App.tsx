@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import perspective from "@perspective-dev/client";
 import perspective_viewer, {
   type HTMLPerspectiveViewerElement,
@@ -8,6 +9,8 @@ import "@perspective-dev/viewer-datagrid";
 import "@perspective-dev/viewer-charts";
 import "@perspective-dev/viewer/dist/css/themes.css";
 import CLIENT_WASM from "@perspective-dev/viewer/dist/wasm/perspective-viewer.wasm?url";
+import { AuthProvider, useAuth } from "./auth/AuthContext";
+import { LoginPage } from "./pages/LoginPage";
 import "./App.css";
 
 interface ServerStatus {
@@ -111,7 +114,27 @@ function getWsUrl(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function App() {
+function ProtectedRoute({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return (
+      <div className="login-page">
+        <div className="login-card">Verifying session...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function Dashboard() {
+  const { user, logout } = useAuth();
   const viewerRef = useRef<HTMLPerspectiveViewerElement | null>(null);
   const [connected, setConnected] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -171,7 +194,13 @@ export function App() {
 
     async function fetchStatus() {
       try {
-        const res = await fetch(`${getApiBaseUrl()}/api/status`);
+        const res = await fetch(`${getApiBaseUrl()}/api/status`, {
+          credentials: "include",
+        });
+        if (res.status === 401 && active) {
+          await logout();
+          return;
+        }
         if (res.ok && active) {
           const data: ServerStatus = await res.json();
           setStatus(data);
@@ -187,7 +216,7 @@ export function App() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [logout]);
 
   async function applyPreset(presetKey: PresetKey) {
     setActivePreset(presetKey);
@@ -201,6 +230,7 @@ export function App() {
     if (!status) return;
     const res = await fetch(`${getApiBaseUrl()}/api/stream/config`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ streaming: !status.streaming }),
     });
@@ -212,6 +242,7 @@ export function App() {
   async function updateSpeed(intervalMs: number) {
     const res = await fetch(`${getApiBaseUrl()}/api/stream/config`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ interval_ms: intervalMs }),
     });
@@ -223,6 +254,7 @@ export function App() {
   async function sendBurst() {
     const res = await fetch(`${getApiBaseUrl()}/api/table/burst?count=250`, {
       method: "POST",
+      credentials: "include",
     });
     if (res.ok) {
       setStatus(await res.json());
@@ -232,6 +264,7 @@ export function App() {
   async function resetTable() {
     const res = await fetch(`${getApiBaseUrl()}/api/table/reset`, {
       method: "POST",
+      credentials: "include",
     });
     if (res.ok) {
       setStatus(await res.json());
@@ -309,6 +342,20 @@ export function App() {
               Reset Table
             </button>
           </div>
+
+          <div className="divider" />
+
+          <div className="action-group">
+            {user && (
+              <span className="user-pill">
+                <strong>{user.display_name}</strong>
+                <span className="user-role">({user.role})</span>
+              </span>
+            )}
+            <button type="button" className="btn" onClick={logout}>
+              Logout
+            </button>
+          </div>
         </div>
       </header>
 
@@ -357,6 +404,26 @@ export function App() {
         <perspective-viewer ref={viewerRef} theme="Pro Dark" />
       </main>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

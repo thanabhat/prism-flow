@@ -4,11 +4,22 @@ from datetime import datetime, timedelta, timezone
 import random
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 import perspective
 from perspective.handlers.starlette import PerspectiveStarletteHandler
 from pydantic import BaseModel
+
+from auth import (
+    LoginRequest,
+    UserProfile,
+    clear_auth_cookie,
+    create_jwt_token,
+    get_current_user,
+    set_auth_cookie,
+    verify_credentials_with_external_service,
+    verify_websocket_cookie,
+)
 
 # ---------------------------------------------------------------------------
 # Perspective Server & Virtual Table Setup
@@ -149,7 +160,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -162,8 +173,41 @@ class StreamConfigPayload(BaseModel):
     batch_size: int | None = None
 
 
-@app.get("/api/status")
-async def get_status() -> dict[str, Any]:
+# ---------------------------------------------------------------------------
+# Authentication Routes (JWT in HttpOnly Cookie)
+# ---------------------------------------------------------------------------
+@app.post("/api/auth/login", response_model=UserProfile)
+async def login(payload: LoginRequest, response: Response) -> UserProfile:
+    user = await verify_credentials_with_external_service(
+        payload.username, payload.password
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password",
+        )
+    token = create_jwt_token(user)
+    set_auth_cookie(response, token)
+    return user
+
+
+@app.post("/api/auth/logout")
+async def logout(response: Response) -> dict[str, str]:
+    clear_auth_cookie(response)
+    return {"status": "logged_out"}
+
+
+@app.get("/api/auth/me", response_model=UserProfile)
+async def read_current_user(
+    current_user: UserProfile = Depends(get_current_user),
+) -> UserProfile:
+    return current_user
+
+
+# ---------------------------------------------------------------------------
+# Protected Stream & Perspective Table Routes
+# ---------------------------------------------------------------------------
+def _build_status() -> dict[str, Any]:
     return {
         "table_name": TABLE_NAME,
         "table_limit": TABLE_LIMIT,
@@ -175,26 +219,41 @@ async def get_status() -> dict[str, Any]:
     }
 
 
+@app.get("/api/status")
+async def get_status(
+    _user: UserProfile = Depends(get_current_user),
+) -> dict[str, Any]:
+    return _build_status()
+
+
 @app.post("/api/stream/config")
-async def update_stream_config(payload: StreamConfigPayload) -> dict[str, Any]:
+async def update_stream_config(
+    payload: StreamConfigPayload,
+    _user: UserProfile = Depends(get_current_user),
+) -> dict[str, Any]:
     if payload.streaming is not None:
         state.streaming = payload.streaming
     if payload.interval_ms is not None:
         state.interval_ms = max(50, min(5000, payload.interval_ms))
     if payload.batch_size is not None:
         state.batch_size = max(1, min(200, payload.batch_size))
-    return await get_status()
+    return _build_status()
 
 
 @app.post("/api/table/burst")
-async def trigger_burst(count: int = 250) -> dict[str, Any]:
+async def trigger_burst(
+    count: int = 250,
+    _user: UserProfile = Depends(get_current_user),
+) -> dict[str, Any]:
     bounded = max(1, min(1000, count))
     trades_table.update(generate_trades(bounded))
-    return await get_status()
+    return _build_status()
 
 
 @app.post("/api/table/reset")
-async def reset_table() -> dict[str, Any]:
+async def reset_table(
+    _user: UserProfile = Depends(get_current_user),
+) -> dict[str, Any]:
     trades_table.clear()
     state.next_id = 1
     state.total_generated = 0
@@ -202,11 +261,16 @@ async def reset_table() -> dict[str, Any]:
         sym: info["base_price"] for sym, info in SYMBOLS.items()
     }
     seed_initial_data(200)
-    return await get_status()
+    return _build_status()
 
 
 @app.websocket("/ws")
 async def perspective_websocket(websocket: WebSocket) -> None:
+    user = verify_websocket_cookie(websocket)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     handler = PerspectiveStarletteHandler(
         perspective_server=perspective_server,
         websocket=websocket,

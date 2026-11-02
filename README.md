@@ -1,9 +1,17 @@
 # PrismFlow
 
 A real-time streaming analytics dashboard built with **Perspective**, **FastAPI**, and **React + TypeScript + Vite**:
-- **Backend (`backend/`)**: Python + FastAPI + `perspective-python` hosting a virtual ring-buffer table (`market_trades`, 5,000-row limit) streamed over WebSockets via `PerspectiveStarletteHandler`.
-- **Frontend (`frontend/`)**: React + TypeScript + Vite + `@perspective-dev/viewer` (`<perspective-viewer>`) with preset layouts (Live Blotter, Sector × Symbol Pivot, Desk Exposure Bar Chart, and Notional/PnL Treemap) and interactive stream controls.
+- **Backend (`backend/`)**: Python + FastAPI + `perspective-python` hosting a virtual ring-buffer table (`market_trades`, 5,000-row limit) streamed over WebSockets via `PerspectiveStarletteHandler`, protected by `HttpOnly` JWT cookie authentication (`auth.py`).
+- **Frontend (`frontend/`)**: React + TypeScript + Vite + React Router + `@perspective-dev/viewer` (`<perspective-viewer>`) with protected routes, login page (`/login`), preset layouts, and interactive stream controls.
 - **Docker**: Separate `Dockerfile`s for `backend` and `frontend` orchestrated via `docker-compose.yml`.
+
+## Authentication & Demo Accounts
+
+Unauthenticated visitors are redirected to `/login`. Upon sign-in, the backend verifies credentials against the external auth service adapter (`verify_credentials_with_external_service` in `backend/auth.py`) and sets a signed JWT in an `HttpOnly`, `SameSite=Lax` cookie (`prismflow_access_token`) used to authenticate both REST (`/api/*`) and Perspective WebSocket (`/ws`) requests.
+
+Built-in demo accounts (when `EXTERNAL_AUTH_URL` is not set):
+- **Trader**: `trader` / `crypto2026`
+- **Admin**: `admin` / `prismflow123`
 
 ## Project Structure
 
