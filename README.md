@@ -5,6 +5,21 @@ A real-time streaming analytics dashboard built with **Perspective**, **FastAPI*
 - **Frontend (`frontend/`)**: React + TypeScript + Vite + React Router + `@perspective-dev/viewer` (`<perspective-viewer>`) with protected routes, login page (`/login`), preset layouts, and interactive stream controls.
 - **Docker**: Separate `Dockerfile`s for `backend` and `frontend` orchestrated via `docker-compose.yml`.
 
+## Live Demo
+
+**[Open PrismFlow →](https://prismflow.thanabh.at/)**
+
+1. Choose a **Trader** or **Admin** demo account on the login page, then click
+   **Sign In**. The credentials are listed below.
+2. Explore the live trade blotter, sector/symbol pivot, desk exposure chart, and
+   treemap using the layout buttons.
+3. Pause or resume the stream, change its speed, add a burst of trades, or reset
+   the table.
+
+All market data is simulated, and visitors share the same stream. The demo runs
+on Render Free, so the first request after an idle period can take about a minute
+while the API starts. In-memory trades reset when the backend restarts or redeploys.
+
 ## Authentication & Demo Accounts
 
 Unauthenticated visitors are redirected to `/login`. Upon sign-in, the backend verifies credentials against the external auth service adapter (`verify_credentials_with_external_service` in `backend/auth.py`) and sets a signed JWT in an `HttpOnly`, `SameSite=Lax` cookie (`prismflow_access_token`) used to authenticate both REST (`/api/*`) and Perspective WebSocket (`/ws`) requests.
@@ -23,10 +38,15 @@ you need restricted access.
 ```text
 prism-flow/
 ├── backend/
+│   ├── .env.example
 │   ├── Dockerfile
+│   ├── auth.py
 │   ├── main.py
-│   └── requirements.txt
+│   ├── requirements.txt
+│   └── tests/
+│       └── test_deployment.py
 ├── frontend/
+│   ├── .env.example
 │   ├── Dockerfile
 │   ├── index.html
 │   ├── nginx.conf
@@ -36,9 +56,14 @@ prism-flow/
 │   └── src/
 │       ├── App.css
 │       ├── App.tsx
+│       ├── auth/
+│       │   └── AuthContext.tsx
 │       ├── main.tsx
+│       ├── pages/
+│       │   └── LoginPage.tsx
 │       └── vite-env.d.ts
-└── docker-compose.yml
+├── docker-compose.yml
+└── render.yaml
 ```
 
 ## Quick Start (Docker Compose)
@@ -81,8 +106,12 @@ The root `render.yaml` defines two independent services from this repo:
 
 | Service | Type | Root directory | Custom domain |
 | --- | --- | --- | --- |
-| `prismflow-web` | Static Site | `frontend` | `prismflow.thanabh.at` |
-| `prismflow-api` | Free Web Service | `backend` | `prismflow-api.thanabh.at` |
+| `prismflow-web` | Static Site | `frontend` | [prismflow.thanabh.at](https://prismflow.thanabh.at/) |
+| `prismflow-api` | Free Web Service | `backend` | [prismflow-api.thanabh.at](https://prismflow-api.thanabh.at/docs) |
+
+The deployed API exposes [interactive API docs](https://prismflow-api.thanabh.at/docs)
+and a public [health check](https://prismflow-api.thanabh.at/healthz). Protected API
+routes and WebSocket connections require the login cookie.
 
 1. Push the repo, then choose **New > Blueprint** in Render and select it. Review
    the two services before creating the Blueprint. The API uses the Free compute
