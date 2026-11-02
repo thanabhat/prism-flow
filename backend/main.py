@@ -106,7 +106,7 @@ def generate_trades(count: int, start_time: datetime | None = None) -> list[dict
         rows.append(
             {
                 "id": state.next_id,
-                "timestamp": ts,
+                "timestamp": ts.isoformat(),
                 "symbol": symbol,
                 "sector": info["sector"],
                 "desk": random.choice(DESKS),
