@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import perspective from "@perspective-dev/client";
 import perspective_viewer, {
   type HTMLPerspectiveViewerElement,
-  type PerspectiveViewerConfig,
+  type ViewerConfigUpdate,
 } from "@perspective-dev/viewer";
 import "@perspective-dev/viewer-datagrid";
 import "@perspective-dev/viewer-charts";
@@ -27,7 +27,7 @@ type PresetKey = "blotter" | "pivot" | "bar" | "treemap";
 
 const PRESETS: Record<
   PresetKey,
-  { label: string; config: PerspectiveViewerConfig }
+  { label: string; config: ViewerConfigUpdate }
 > = {
   blotter: {
     label: "Live Blotter",
@@ -401,7 +401,7 @@ function Dashboard() {
             </div>
           </div>
         )}
-        <perspective-viewer ref={viewerRef} theme="Pro Dark" />
+        <perspective-viewer ref={viewerRef} />
       </main>
     </div>
   );
