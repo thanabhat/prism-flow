@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+import os
 import random
 from typing import Any
 
@@ -158,13 +159,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+ALLOWED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,https://prismflow.thanabh.at",
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+
+@app.get("/healthz")
+async def health_check() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 class StreamConfigPayload(BaseModel):
@@ -266,6 +281,12 @@ async def reset_table(
 
 @app.websocket("/ws")
 async def perspective_websocket(websocket: WebSocket) -> None:
+    # CORS middleware does not validate WebSocket origins.
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in ALLOWED_ORIGINS:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     user = verify_websocket_cookie(websocket)
     if not user:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)

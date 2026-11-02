@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import os
+import secrets
 from typing import Any
 
 from fastapi import HTTPException, Request, Response, WebSocket, status
@@ -7,11 +8,19 @@ import httpx
 import jwt
 from pydantic import BaseModel
 
-JWT_SECRET = os.getenv("JWT_SECRET", "prismflow-dev-secret-change-in-prod-9f8a7b6c5d4e3f2a")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRES_MINUTES = int(os.getenv("JWT_EXPIRES_MINUTES", "480"))
 COOKIE_NAME = "prismflow_access_token"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+
+JWT_SECRET = os.getenv("JWT_SECRET", "").strip()
+if not JWT_SECRET:
+    if COOKIE_SECURE or os.getenv("RENDER") == "true":
+        raise RuntimeError("Set JWT_SECRET before starting an HTTPS or Render deployment.")
+    # Local development only: never reuse a public signing key.
+    JWT_SECRET = secrets.token_hex(32)
+elif len(JWT_SECRET.encode("utf-8")) < 32:
+    raise RuntimeError("JWT_SECRET must contain at least 32 bytes.")
 
 # Optional URL of an external authentication microservice
 EXTERNAL_AUTH_URL = os.getenv("EXTERNAL_AUTH_URL", "")
